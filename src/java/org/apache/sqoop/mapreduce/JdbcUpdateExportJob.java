@@ -35,7 +35,7 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.sqoop.mapreduce.ExportJobBase.FileType;
 import org.apache.sqoop.mapreduce.hcat.SqoopHCatUtilities;
-import org.kitesdk.data.mapreduce.DatasetKeyInputFormat;
+import parquet.avro.AvroParquetInputFormat;
 
 import com.cloudera.sqoop.manager.ConnManager;
 import com.cloudera.sqoop.manager.ExportJobContext;
@@ -187,8 +187,6 @@ public class JdbcUpdateExportJob extends ExportJobBase {
     } else if (fileType == FileType.PARQUET_FILE) {
       LOG.debug("Configuring for Parquet export");
       configureGenericRecordExportInputFormat(job, tableName);
-      String uri = "dataset:" + FileSystemUtil.makeQualified(getInputPath(), job.getConfiguration());
-      DatasetKeyInputFormat.configure(job).readFrom(uri);
     }
   }
 
@@ -223,7 +221,7 @@ public class JdbcUpdateExportJob extends ExportJobBase {
     case AVRO_DATA_FILE:
       return AvroInputFormat.class;
     case PARQUET_FILE:
-      return DatasetKeyInputFormat.class;
+      return AvroParquetInputFormat.class;
     default:
       return super.getInputFormatClass();
     }

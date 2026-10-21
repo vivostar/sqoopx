@@ -34,11 +34,11 @@ import java.io.IOException;
 import java.sql.SQLException;
 
 /**
- * Imports records by writing them to a Parquet File.
+ * Imports records by writing them to a Parquet File via AvroParquetOutputFormat.
  */
 public class ParquetImportMapper
     extends AutoProgressMapper<LongWritable, SqoopRecord,
-        GenericRecord, NullWritable> {
+        NullWritable, GenericRecord> {
 
   private Schema schema = null;
   private boolean bigDecimalFormatString = true;
@@ -52,7 +52,9 @@ public class ParquetImportMapper
     bigDecimalFormatString = conf.getBoolean(
         ImportJobBase.PROPERTY_BIGDECIMAL_FORMAT,
         ImportJobBase.PROPERTY_BIGDECIMAL_FORMAT_DEFAULT);
-    lobLoader = new LargeObjectLoader(conf, new Path(conf.get("sqoop.kite.lob.extern.dir", "/tmp/sqoop-parquet-" + context.getTaskAttemptID())));
+    Path workPath = FileOutputFormat.getWorkOutputPath(context);
+    lobLoader = new LargeObjectLoader(conf,
+        workPath != null ? workPath : new Path(conf.get("sqoop.lob.extern.dir", "/tmp/sqoop-parquet-" + context.getTaskAttemptID())));
   }
 
   @Override
@@ -65,9 +67,9 @@ public class ParquetImportMapper
       throw new IOException(sqlE);
     }
 
-    GenericRecord outKey = AvroUtil.toGenericRecord(val.getFieldMap(), schema,
+    GenericRecord outRecord = AvroUtil.toGenericRecord(val.getFieldMap(), schema,
         bigDecimalFormatString);
-    context.write(outKey, null);
+    context.write(null, outRecord);
   }
 
   @Override
@@ -76,5 +78,4 @@ public class ParquetImportMapper
       lobLoader.close();
     }
   }
-
 }

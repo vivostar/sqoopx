@@ -171,9 +171,9 @@
   <property name="ivysettings.xml" location="${ivy.dir}/ivysettings.xml"/>
   <property name="ivy.jar" location="${lib.dir}/ivy-${ivy.version}.jar"/>
   <property name="ivy_repo_url"
-  value="http://repo2.maven.org/maven2/org/apache/ivy/ivy/${ivy.version}/ivy-${ivy.version}.jar" />
+  value="https://repo.maven.apache.org/maven2/org/apache/ivy/ivy/${ivy.version}/ivy-${ivy.version}.jar" />
   <property name="mvn_repo_url"
-  value="http://repo2.maven.org/maven2/org/apache/maven/maven-ant-tasks/${mvn.version}/maven-ant-tasks-${mvn.version}.jar"/>
+  value="https://repo.maven.apache.org/maven2/org/apache/maven/maven-ant-tasks/${mvn.version}/maven-ant-tasks-${mvn.version}.jar"/>
   <property name="mvn.jar"
       location="${build.dir}/maven-ant-tasks-${mvn.version}.jar" />
   <property name="build.ivy.dir" location="${build.dir}/ivy" />
@@ -276,6 +276,49 @@
                 value="org.apache.sqoop.manager.DefaultManagerFactory"/>
     </else>
   </if>
+
+  <!-- Sqoop classpaths mapped to Maven downloaded dependencies in build/ivy/lib/sqoop -->
+  <path id="sqoop.hadoop.classpath">
+    <fileset dir="${build.ivy.lib.dir}/${name}/common" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+  <path id="sqoop.common.classpath">
+    <fileset dir="${build.ivy.lib.dir}/${name}/common" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+  <path id="sqoop.hadooptest.classpath">
+    <fileset dir="${build.ivy.lib.dir}/${name}/test" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+    <fileset dir="${build.ivy.lib.dir}/${name}/common" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+  <path id="sqoop.test.classpath">
+    <fileset dir="${build.ivy.lib.dir}/${name}/test" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+    <fileset dir="${build.ivy.lib.dir}/${name}/common" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+  <path id="sqoop.redist.classpath">
+    <fileset dir="${build.ivy.lib.dir}/${name}/redist" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+  <path id="sqoop.checkstyle.classpath">
+    <fileset dir="${build.ivy.lib.dir}/${name}/checkstyle" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+  <path id="sqoop.releaseaudit.classpath">
+    <fileset dir="${build.ivy.lib.dir}/${name}/releaseaudit" erroronmissingdir="false">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
 
   <!-- The classpath for compiling and running Sqoop -->
   <if>
@@ -1257,93 +1300,38 @@
     </fail>
   </target>
 
-  <target name="ivy-init" depends="ivy-init-antlib" unless="ivy.configured">
-    <ivy:configure settingsid="${name}.ivy.settings" file="${ivysettings.xml}"/>
-    <property name="ivy.configured" value="true" />
+  <!-- Maven-based dependency download: replaces ivy to download dependencies quickly via Maven -->
+  <target name="mvn-download-deps" unless="mvn.deps.downloaded">
+    <echo message="Downloading dependencies using Maven (via Aliyun/Cloudera mirror)..."/>
+    <exec executable="mvn" dir="${basedir}" failonerror="true">
+      <arg value="generate-resources"/>
+      <arg value="-DskipTests"/>
+    </exec>
+    <property name="mvn.deps.downloaded" value="true"/>
   </target>
 
-
-  <!-- retrieve ivy-managed artifacts for the compile configuration -->
-  <target name="ivy-resolve-common" depends="ivy-init">
-    <ivy:resolve settingsRef="${name}.ivy.settings" conf="common" />
-  </target>
-  <target name="ivy-retrieve-common" depends="ivy-resolve-common">
-    <ivy:retrieve settingsRef="${name}.ivy.settings"
-      pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" />
-    <ivy:cachepath pathid="${name}.common.classpath" conf="common" />
-  </target>
-
-
-  <!-- retrieve ivy-managed artifacts for the test configuration -->
-  <target name="ivy-resolve-test" depends="ivy-init">
-    <ivy:resolve settingsRef="${name}.ivy.settings" conf="test" />
-  </target>
-  <target name="ivy-retrieve-test" depends="ivy-resolve-test">
-    <ivy:retrieve settingsRef="${name}.ivy.settings"
-      pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" />
-    <ivy:cachepath pathid="${name}.test.classpath" conf="test" />
-  </target>
-
-
-  <!-- retrieve ivy-managed artifacts for the redist configuration -->
-  <target name="ivy-resolve-redist" depends="ivy-init">
-    <ivy:resolve settingsRef="${name}.ivy.settings" conf="redist" />
-  </target>
-  <target name="ivy-retrieve-redist" depends="ivy-resolve-redist">
-    <ivy:retrieve settingsRef="${name}.ivy.settings"
-      pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" />
-    <ivy:cachepath pathid="${name}.redist.classpath" conf="redist" />
-  </target>
-
-  <!-- retrieve ivy-managed artifacts from the Hadoop distribution -->
-  <target name="ivy-resolve-hadoop" depends="ivy-init"
-      unless="hadoop.is.local">
-    <ivy:resolve settingsRef="${name}.ivy.settings" conf="common" />
-  </target>
-  <target name="ivy-retrieve-hadoop" depends="ivy-init,ivy-resolve-hadoop">
-    <!-- retrieve hadoop refs normally. -->
-    <ivy:retrieve settingsRef="${name}.ivy.settings"
-       pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}"
-       sync="true" />
-    <ivy:cachepath pathid="${name}.hadoop.classpath" conf="common" />
-  </target>
-
-  <!-- retrieve ivy-managed test artifacts from the Hadoop distribution -->
-  <target name="ivy-resolve-hadoop-test" depends="ivy-init"
-      unless="hadoop.is.local">
-    <ivy:resolve settingsRef="${name}.ivy.settings" conf="test" />
-  </target>
-  <target name="ivy-retrieve-hadoop-test"
-      depends="ivy-init,ivy-resolve-hadoop-test">
-    <ivy:retrieve settingsRef="${name}.ivy.settings"
-          pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}"
-          sync="true" />
-    <ivy:cachepath pathid="${name}.hadooptest.classpath"
-          conf="test" />
-  </target>
-
-  <!-- retrieve ivy-managed artifacts for checkstyle -->
-  <target name="ivy-resolve-checkstyle" depends="ivy-init">
-    <ivy:resolve settingsRef="${name}.ivy.settings" conf="checkstyle" />
-  </target>
-  <target name="ivy-retrieve-checkstyle" depends="ivy-resolve-checkstyle">
-    <ivy:retrieve settingsRef="${name}.ivy.settings"
-      pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" />
-    <ivy:cachepath pathid="${name}.checkstyle.classpath" conf="checkstyle" />
-  </target>
-
-  <!-- retrieve ivy-managed artifacts for releaseaudit -->
-  <target name="ivy-resolve-releaseaudit" depends="ivy-init">
-    <ivy:resolve settingsRef="${name}.ivy.settings" conf="releaseaudit" />
-  </target>
-  <target name="ivy-retrieve-releaseaudit" depends="ivy-resolve-releaseaudit">
-    <ivy:retrieve settingsRef="${name}.ivy.settings"
-      pattern="${build.ivy.lib.dir}/${ivy.artifact.retrieve.pattern}" sync="true" />
-    <ivy:cachepath pathid="${name}.releaseaudit.classpath" conf="releaseaudit" />
+  <!-- Setup classpaths using Maven-downloaded libraries in build/ivy/lib/sqoop -->
+  <target name="mvn-setup-classpaths" depends="mvn-download-deps">
     <available classname="${rat.reporting.classname}"
-        classpathref="${name}.releaseaudit.classpath" property="rat.present"
+        classpathref="sqoop.releaseaudit.classpath" property="rat.present"
         value="true" />
   </target>
+
+  <target name="ivy-init" />
+  <target name="ivy-resolve-common" depends="mvn-setup-classpaths" />
+  <target name="ivy-retrieve-common" depends="mvn-setup-classpaths" />
+  <target name="ivy-resolve-test" depends="mvn-setup-classpaths" />
+  <target name="ivy-retrieve-test" depends="mvn-setup-classpaths" />
+  <target name="ivy-resolve-redist" depends="mvn-setup-classpaths" />
+  <target name="ivy-retrieve-redist" depends="mvn-setup-classpaths" />
+  <target name="ivy-resolve-hadoop" depends="mvn-setup-classpaths" />
+  <target name="ivy-retrieve-hadoop" depends="mvn-setup-classpaths" />
+  <target name="ivy-resolve-hadoop-test" depends="mvn-setup-classpaths" />
+  <target name="ivy-retrieve-hadoop-test" depends="mvn-setup-classpaths" />
+  <target name="ivy-resolve-checkstyle" depends="mvn-setup-classpaths" />
+  <target name="ivy-retrieve-checkstyle" depends="mvn-setup-classpaths" />
+  <target name="ivy-resolve-releaseaudit" depends="mvn-setup-classpaths" />
+  <target name="ivy-retrieve-releaseaudit" depends="mvn-setup-classpaths" />
 
   <target name="eclipse" description="Generate Eclipse project"
       depends="init,ivy-retrieve-hadoop,ivy-retrieve-hadoop-test">

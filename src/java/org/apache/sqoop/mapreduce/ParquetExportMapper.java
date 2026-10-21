@@ -27,7 +27,7 @@ import java.io.IOException;
  * Exports Parquet records from a data source.
  */
 public class ParquetExportMapper
-    extends GenericRecordExportMapper<GenericRecord, NullWritable> {
+    extends GenericRecordExportMapper<NullWritable, GenericRecord> {
 
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
@@ -35,9 +35,9 @@ public class ParquetExportMapper
   }
 
   @Override
-  protected void map(GenericRecord key, NullWritable val,
+  protected void map(NullWritable key, GenericRecord val,
       Context context) throws IOException, InterruptedException {
-    context.write(toSqoopRecord(key), NullWritable.get());
+    context.write(toSqoopRecord(val), NullWritable.get());
   }
 
 }
