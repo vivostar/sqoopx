@@ -25,8 +25,11 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.BufferedMutator;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.Delete;
-import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -85,7 +88,8 @@ public class HBasePutProcessor implements Closeable, Configurable,
   private PutTransformer putTransformer;
 
   private String tableName;
-  private HTable table;
+  private Connection connection;
+  private BufferedMutator mutator;
 
   public HBasePutProcessor() {
   }
@@ -109,12 +113,12 @@ public class HBasePutProcessor implements Closeable, Configurable,
 
     this.tableName = conf.get(TABLE_NAME_KEY, null);
     try {
-      this.table = new HTable(conf, this.tableName);
+      this.connection = ConnectionFactory.createConnection(conf);
+      this.mutator = connection.getBufferedMutator(TableName.valueOf(this.tableName));
     } catch (IOException ioe) {
       throw new RuntimeException("Could not access HBase table " + tableName,
           ioe);
     }
-    this.table.setAutoFlush(false);
   }
 
   @Override
@@ -140,15 +144,15 @@ public class HBasePutProcessor implements Closeable, Configurable,
                 LOG.warn("Could not insert row with no columns "
                       + "for row-key column: " + Bytes.toString(putObject.getRow()));
                 } else {
-                  this.table.put(putObject);
+                  this.mutator.mutate(putObject);
                 }
-              } else if(mutation instanceof Delete) {
+              } else if (mutation instanceof Delete) {
                 Delete deleteObject = (Delete) mutation;
                 if (deleteObject.isEmpty()) {
                   LOG.warn("Could not delete row with no columns "
                         + "for row-key column: " + Bytes.toString(deleteObject.getRow()));
                 } else {
-                  this.table.delete(deleteObject);
+                  this.mutator.mutate(deleteObject);
                 }
             }
         }
@@ -161,8 +165,13 @@ public class HBasePutProcessor implements Closeable, Configurable,
    * Closes the HBase table and commits all pending operations.
    */
   public void close() throws IOException {
-    this.table.flushCommits();
-    this.table.close();
+    if (this.mutator != null) {
+      this.mutator.flush();
+      this.mutator.close();
+    }
+    if (this.connection != null) {
+      this.connection.close();
+    }
   }
 
 }

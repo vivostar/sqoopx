@@ -26,10 +26,15 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.HColumnDescriptor;
-import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.client.TableDescriptor;
+import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -160,7 +165,8 @@ public class HBaseImportJob extends DataDrivenImportJob {
       HBaseConfiguration.addHbaseResources(conf);
     }
 
-    HBaseAdmin admin = new HBaseAdmin(conf);
+    Connection connection = ConnectionFactory.createConnection(conf);
+    Admin admin = connection.getAdmin();
 
     if (!skipDelegationTokens(conf)) {
       // Add authentication token to the job if we're running on secure cluster.
@@ -211,15 +217,16 @@ public class HBaseImportJob extends DataDrivenImportJob {
     }
 
     // Check to see if the table exists.
-    HTableDescriptor tableDesc = null;
+    TableName hTableName = TableName.valueOf(tableName);
     byte [] familyBytes = Bytes.toBytes(familyName);
-    HColumnDescriptor colDesc = new HColumnDescriptor(familyBytes);
-    if (!admin.tableExists(tableName)) {
+    ColumnFamilyDescriptor colDesc = ColumnFamilyDescriptorBuilder.of(familyBytes);
+    if (!admin.tableExists(hTableName)) {
       if (options.getCreateHBaseTable()) {
         // Create the table.
         LOG.info("Creating missing HBase table " + tableName);
-        tableDesc =  new HTableDescriptor(tableName);
-        tableDesc.addFamily(colDesc);
+        TableDescriptor tableDesc = TableDescriptorBuilder.newBuilder(hTableName)
+            .setColumnFamily(colDesc)
+            .build();
         admin.createTable(tableDesc);
       } else {
         LOG.warn("Could not find HBase table " + tableName);
@@ -228,16 +235,16 @@ public class HBaseImportJob extends DataDrivenImportJob {
       }
     } else {
       // Table exists, so retrieve their current version
-      tableDesc = admin.getTableDescriptor(Bytes.toBytes(tableName));
+      TableDescriptor tableDesc = admin.getDescriptor(hTableName);
 
       // Check if current version do have specified column family
-      if (!tableDesc.hasFamily(familyBytes)) {
+      if (!tableDesc.hasColumnFamily(familyBytes)) {
         if (options.getCreateHBaseTable()) {
           // Create the column family.
           LOG.info("Creating missing column family " + familyName);
-          admin.disableTable(tableName);
-          admin.addColumn(tableName, colDesc);
-          admin.enableTable(tableName);
+          admin.disableTable(hTableName);
+          admin.addColumnFamily(hTableName, colDesc);
+          admin.enableTable(hTableName);
         } else {
           LOG.warn("Could not find column family " + familyName + " in table "
             + tableName);
@@ -250,10 +257,11 @@ public class HBaseImportJob extends DataDrivenImportJob {
     // Make sure we close the connection to HBA, this is only relevant in
     // unit tests
     admin.close();
+    connection.close();
 
     // Make sure HBase libraries are shipped as part of the job.
     TableMapReduceUtil.addDependencyJars(job);
-    TableMapReduceUtil.addDependencyJars(conf, HTable.class);
+    TableMapReduceUtil.addDependencyJars(conf, Table.class);
 
     super.jobSetup(job);
   }

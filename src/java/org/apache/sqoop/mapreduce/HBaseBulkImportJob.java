@@ -26,11 +26,16 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
-import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.RegionLocator;
+import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
-import org.apache.hadoop.hbase.mapreduce.HFileOutputFormat;
-import org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles;
+import org.apache.hadoop.hbase.mapreduce.HFileOutputFormat2;
+import org.apache.hadoop.hbase.tool.LoadIncrementalHFiles;
 import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -81,8 +86,13 @@ public class HBaseBulkImportJob extends HBaseImportJob {
 
     TableMapReduceUtil.addDependencyJars(job.getConfiguration(), Preconditions.class);
     FileOutputFormat.setOutputPath(job, getContext().getDestination());
-    HTable hTable = new HTable(job.getConfiguration(), options.getHBaseTable());
-    HFileOutputFormat.configureIncrementalLoad(job, hTable);
+    try (Connection conn = ConnectionFactory.createConnection(job.getConfiguration())) {
+      TableName hTableName = TableName.valueOf(options.getHBaseTable());
+      try (Table table = conn.getTable(hTableName);
+           RegionLocator regionLocator = conn.getRegionLocator(hTableName)) {
+        HFileOutputFormat2.configureIncrementalLoad(job, table, regionLocator);
+      }
+    }
   }
 
   /**
@@ -99,13 +109,16 @@ public class HBaseBulkImportJob extends HBaseImportJob {
     setPermission(fileSystem, fileSystem.getFileStatus(bulkLoadDir),
       FsPermission.createImmutable((short) 00777));
 
-    HTable hTable = new HTable(job.getConfiguration(), options.getHBaseTable());
-
     // Load generated HFiles into table
-    try {
-      LoadIncrementalHFiles loader = new LoadIncrementalHFiles(
-        job.getConfiguration());
-      loader.doBulkLoad(bulkLoadDir, hTable);
+    try (Connection conn = ConnectionFactory.createConnection(job.getConfiguration())) {
+      TableName hTableName = TableName.valueOf(options.getHBaseTable());
+      try (Table table = conn.getTable(hTableName);
+           RegionLocator regionLocator = conn.getRegionLocator(hTableName);
+           Admin admin = conn.getAdmin()) {
+        LoadIncrementalHFiles loader = new LoadIncrementalHFiles(
+          job.getConfiguration());
+        loader.doBulkLoad(bulkLoadDir, admin, table, regionLocator);
+      }
     }
     catch (Exception e) {
       String errorMessage = String.format("Unrecoverable error while " +
